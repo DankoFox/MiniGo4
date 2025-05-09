@@ -1,1 +1,10 @@
-func main() {putInt(5);};
+
+func foo(a int, c int) {
+    var b = a + c;
+    putInt(b)
+}
+func main() {
+    foo(2, 3)
+}
+func foo1() int {return 1;}
+        

@@ -1,1 +1,6 @@
-Program([VarDecl(a,IntType,IntLiteral(5000)),FuncDecl(main,[],VoidType,Block([FuncCall(putInt,[Id(a)])]))])
+
+func main() {
+    a := getInt()
+    putInt(a)
+}
+        

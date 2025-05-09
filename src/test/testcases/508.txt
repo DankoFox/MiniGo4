@@ -1,0 +1,1 @@
+func main() { var a bool = true; var b bool = !a; if (b) putInt(1); else putInt(0);};

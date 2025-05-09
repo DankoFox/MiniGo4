@@ -1,0 +1,1 @@
+func main() {var a string = "hello"; a = "world"; putInt(1);};

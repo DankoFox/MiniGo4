@@ -1,1 +1,9 @@
-Program([FuncDecl(main,[],VoidType,Block([VarDecl(a,IntType,IntLiteral(500)),FuncCall(putInt,[Id(a)])]))])
+
+    func main() {
+        var f = true;
+        var g boolean;
+
+        putBoolLn(f)
+        putBool(g)
+    }
+        

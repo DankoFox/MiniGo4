@@ -149,3 +149,19 @@ class CodeGenerator(BaseVisitor,Utils):
         return self.emit.emitPUSHICONST(ast.value, o['frame']), IntType()
 
     
+    def visitReturn(self, ast, o):
+        frame = o['frame']
+        if ast.expr:
+            code, typ = self.visit(ast.expr, o)
+            self.emit.printout(code)
+            self.emit.printout(self.emit.emitRETURN(typ, frame))
+        else:
+            self.emit.printout(self.emit.emitRETURN(VoidType(), frame))
+        return o
+
+    def visitParamDecl(self, ast, o):
+        frame = o['frame']
+        idx = frame.getNewIndex()
+        self.emit.printout(self.emit.emitVAR(idx, ast.varName, ast.varType, frame.getStartLabel(), frame.getEndLabel(), frame))
+        o['env'][0].append(Symbol(ast.varName, ast.varType, Index(idx)))
+        return o

@@ -1,1 +1,8 @@
-var a int = 10; func main() { putInt(a);};
+
+func main() {
+    putIntLn(1)
+    putFloatLn(1.0)
+    putStringLn("TIEN")
+    putLn()
+}
+        

@@ -1,20 +1,29 @@
 .source MiniGoClass.java
 .class public MiniGoClass
 .super java.lang.Object
+.field static a <class 'AST.FloatType'>
 
 .method public static main([Ljava/lang/String;)V
 Label0:
 .var 0 is args [Ljava/lang/String; from Label0 to Label1
 Label2:
-.var 1 is a I from Label2 to Label3
-	invokestatic io/getInt()I
-	istore_1
-	iload_1
-	invokestatic io/putInt(I)V
+	getstatic MiniGoClass/a <class 'AST.FloatType'>
+	invokestatic io/putFloatLn(<class 'AST.FloatType'>)V
+.var 1 is a <class 'AST.FloatType'> from Label2 to Label3
+	iconst_4
+	i2f
+	fstore_1
+	fload_1
+	invokestatic io/putFloatLn(<class 'AST.FloatType'>)V
+	iconst_2
+	i2f
+	fstore_1
+	fload_1
+	invokestatic io/putFloat(<class 'AST.FloatType'>)V
 Label3:
 Label1:
 	return
-.limit stack 1
+.limit stack 2
 .limit locals 2
 .end method
 

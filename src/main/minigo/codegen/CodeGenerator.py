@@ -54,7 +54,15 @@ class CodeGenerator(BaseVisitor,Utils):
             Symbol("putFloat", MType([FloatType()], VoidType()), CName("io", True)),
             Symbol("putFloatLn", MType([FloatType()], VoidType()), CName("io", True)),
             Symbol("putString", MType([StringType()], VoidType()), CName("io", True)),
-            # TODO: Thêm tất cả các hàm builtin trong minigo spec vào trong này, io là file trong folder _io quy định mấy hày này sẽ làm j rồi
+            Symbol("putStringLn", MType([StringType()], VoidType()), CName("io", True)),
+            Symbol("putLn", MType([], VoidType()), CName("io", True)),
+            Symbol("putBool", MType([BoolType()], VoidType()), CName("io", True)),
+            Symbol("putBoolLn", MType([BoolType()], VoidType()), CName("io", True)),
+            
+            Symbol("getInt", MType([], IntType()), CName("io", True)),
+            Symbol("getFloat", MType([], FloatType()), CName("io", True)),
+            Symbol("getBool", MType([], BoolType()), CName("io", True)),
+            Symbol("getString", MType([], StringType()), CName("io", True))
         ]
         return mem
 
@@ -247,7 +255,7 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit.printout(self.emit.emitVAR(index, ast.parName, ast.parType, frame.getStartLabel() ,frame.getEndLabel(), frame))     
         return o
 
-    def visitVarDecl(self, ast: VarDecl, o: dict) -> dict:
+    def visitVarDecl(self, ast: VarDecl, o: dict) -> dict: #TODO: Fix this
         
 
         def create_init(varType: Type, o: dict):
@@ -305,30 +313,41 @@ class CodeGenerator(BaseVisitor,Utils):
             self.emit.printout(self.emit.emitVAR(index, ast.varName, varType, frame.getStartLabel(), frame.getEndLabel(), frame))  
             rhsCode, rhsType = self.visit(varInit, o)
             if type(varType) is FloatType and type(rhsType) is IntType:
-                pass #TODO: thêm mã chuyển đổi kiểu int -> float vào rhsCode. 
+                rhsCode += self.emit.emitI2F(frame)
                   
             self.emit.printout(rhsCode)
             self.emit.printout(self.emit.emitWRITEVAR(ast.varName, varType, index,  frame)) # sinh mã gán giá trị vào biến                   
         return o
     
-    def visitFuncCall(self, ast: FuncCall, o: dict) -> dict:
+    def visitFuncCall(self, ast: FuncCall, o: dict) -> dict: # TODO: FIX THIS
         sym = next(filter(lambda x: x.name == ast.funName, self.list_function),None)
+        frame = o['frame']
+
         if o.get('stmt'):
-            o["stmt"] = False
-            #TODO: dùng emittter sinh mã cho khúc lấy params trong ast.args, nhớ dùng hàm visit, visit qa từng args. Dùng list comprehension or vòng lặp: [..code..]  
-             
+            o["stmt"] = False #TODO: dùng emittter sinh mã cho khúc lấy params trong ast.args, nhớ dùng hàm visit, visit qa từng args. Dùng list comprehension or vòng lặp: [..code..]  
+            for arg in ast.args:
+                code, _ = self.visit(arg, o)
+                self.emit.printout(code)
               
-            self.emit.printout(self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}",sym.mtype, o['frame']))
+            self.emit.printout(self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, frame))
             #Đã đặt đủ tham số vào stack rồi thì sinh mã gọi hàm thôi
 
             return o # trả về o luôn vì stmt luôn trả về void k cần quan tâm
-        output = "".join([str(self.visit(x, o)[0]) for x in ast.args])
-        output += "TODO code" ## TODO: Đã đặt đủ tham số vào stack rồi thì sinh mã gọi hàm thôi
+        
+        result = ""
+        for arg in ast.args:
+            code, _ = self.visit(arg, o)
+            result += code
+        result += self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, frame)
+        return result, sym.mtype.rettype
 
-        # Vì funcall ở chỗ này là 1 biểu thức nên mình cần trả về giá trị kèm theo kiểu trả về luôn.
-        return output, sym.mtype.rettype
+        # output = "".join([str(self.visit(x, o)[0]) for x in ast.args])
+        # output += "TODO code" ## TODO: Đã đặt đủ tham số vào stack rồi thì sinh mã gọi hàm thôi
 
-    def visitBlock(self, ast: Block, o: dict) -> dict:
+        # # Vì funcall ở chỗ này là 1 biểu thức nên mình cần trả về giá trị kèm theo kiểu trả về luôn.
+        # return output, sym.mtype.rettype
+
+    def visitBlock(self, ast: Block, o: dict) -> dict: # TESTING
         env = o.copy()
         frame = env['frame']
 
@@ -349,31 +368,35 @@ class CodeGenerator(BaseVisitor,Utils):
         frame.exitScope()
         return o
     
-    def visitId(self, ast: Id, o: dict) -> dict:
+    def visitId(self, ast: Id, o: dict) -> dict: # TODO: FIX THIS
         #Dòng này để xác định à Id của mình là thằng nào trong env.
         sym = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i]),None)
 
+        frame = o['frame']
         #Nếu Id này nằm ở vế trái phép gán
         if o.get('isLeft'):
             if type(sym.value) is Index: #Nếu Id là 1 tên trường của 1 object
-                return self.emit.emitWRITEVAR("TODO"), sym.mtype #TODO ở đây tham số inType là sym.mtype
+               return self.emit.emitWRITEVAR(sym.name, sym.mtype, sym.value.value, frame), sym.mtype #TODO ở đây tham số inType là sym.mtype
             else:         
                 #Putstatic là ghi vào biến static,
-                return self.emit.emitPUTSTATIC("TODO"),sym.mtype  #TODO  truyền vào tên lexeme cho đúng. VD: MiniGoClass/varName
+                return self.emit.emitPUTSTATIC(f"{sym.value.value}/{sym.name}", sym.mtype, frame), sym.mtype  #TODO  truyền vào tên lexeme cho đúng. VD: MiniGoClass/varName
 
 
         if type(sym.value) is Index: #Nếu Id là 1 tên trường của 1 object
-            return self.emit.emitREADVAR("TODO"),sym.mtype #TODO   truyền vào tên lexeme cho đúng
+            return self.emit.emitREADVAR(sym.name, sym.mtype, sym.value.value, frame), sym.mtype #TODO   truyền vào tên lexeme cho đúng
         else:         
             #Getstatic là đọc biến static,
-            return self.emit.emitGETSTATIC("TODO"),sym.mtype #TODO  truyền vào tên lexeme cho đúng
+            return self.emit.emitGETSTATIC(f"{sym.value.value}/{sym.name}", sym.mtype, frame), sym.mtype #TODO  truyền vào tên lexeme cho đúng
 
-    def visitAssign(self, ast: Assign, o: dict) -> dict:
+    def visitAssign(self, ast: Assign, o: dict) -> dict: # TODO: FIX THIS
 
         #Xem thử là biến này đã được khai báo chưa, trong minigo nếu phép gán mà biến chưa được khai báo thì sẽ tự động khai báo nó luôn.
-        if type(ast.lhs) is Id and not next(filter(lambda x: "TODO")): # TODO: kiểm tra xem biến này đã được khai báo chưa => Duyệt trong o['env']
-            return # TODO: Khúc này tạo và visit 1 VarDecl mới với kiểu của var là None.
-        
+        # if type(ast.lhs) is Id and not next(filter(lambda x: "TODO")): # TODO: kiểm tra xem biến này đã được khai báo chưa => Duyệt trong o['env']
+        #     return # TODO: Khúc này tạo và visit 1 VarDecl mới với kiểu của var là None.
+
+        if type(ast.lhs) is Id and not any(sym.name == ast.lhs.name for scope in o['env'] for sym in scope):
+            var_decl = VarDecl(ast.lhs.name, None, ast.rhs)
+            return self.visit(var_decl, o)
 
         rhsCode, rhsType = self.visit(ast.rhs, o)
 
@@ -384,19 +407,15 @@ class CodeGenerator(BaseVisitor,Utils):
         o['isLeft'] = False
 
         if type(lhsType) is FloatType and type(rhsType) is IntType:
-            pass #TODO: thêm mã chuyển đổi kiểu int -> float vào lhsCode.
+            rhsCode += self.emit.emitI2F(o['frame']) #TODO: thêm mã chuyển đổi kiểu int -> float vào lhsCode.
         
-
         # Khúc array cell này task 3
-
         o['frame'].push() # Tăng kích thước stack lên 1 đơn vị, vì mình sẽ dùng stack để lưu trữ giá trị của biến này.
-                
-
 
         if type(ast.lhs) is ArrayCell:
             self.emit.printout(lhsCode)
             self.emit.printout(rhsCode)
-            self.emit.printout(self.emit.emitASTORE("TODO")) # lưu vào mảng, truyền vào mảng và o['frame'].Gợi ý, khi visit lhs ta có visitAarrayCell và dùng self.. để lưu mảng đang xét
+            self.emit.printout(self.emit.emitASTORE(lhsType.eleType, o['frame'])) # lưu vào mảng, truyền vào mảng và o['frame'].Gợi ý, khi visit lhs ta có visitAarrayCell và dùng self.. để lưu mảng đang xét
         # access id
         else:
             self.emit.printout(rhsCode)

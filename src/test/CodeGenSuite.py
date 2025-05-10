@@ -98,14 +98,14 @@ func main() {
         
     def test_007(self):
         input = """
-var a float = 3;
-func main() {
-    putFloatLn(a)
-    var a float = 4;
-    putFloatLn(a)
-    a := 2
-    putFloat(a)
-}
+        var a float = 3;
+        func main() {
+            putFloatLn(a)
+            var a float = 4;
+            putFloatLn(a)
+            a := 2
+            putFloat(a)
+        }
         """
         expect = "3.0\n4.0\n2.0"
         self.assertTrue(TestCodeGen.test(input, expect, 507))

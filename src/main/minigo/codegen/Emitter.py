@@ -3,8 +3,7 @@ from StaticCheck import *
 from StaticError import *
 import CodeGenerator as cgen
 from MachineCode import JasminCode
-
-
+from CodeGenError import *
 
 class Emitter():
     def __init__(self, filename):
@@ -146,6 +145,8 @@ class Emitter():
         frame.push()
         if type(inType) is IntType:
             return self.jvm.emitILOAD(index)
+        elif type(inType) is FloatType:
+            return self.jvm.emitFLOAD(index)
         elif type(inType) is cgen.ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
             return self.jvm.emitALOAD(index)
         else:
@@ -178,6 +179,8 @@ class Emitter():
 
         if type(inType) is IntType:
             return self.jvm.emitISTORE(index)
+        elif type(inType) is FloatType:
+            return self.jvm.emitFSTORE(index)
         elif type(inType) is cgen.ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
             return self.jvm.emitASTORE(index)
         else:

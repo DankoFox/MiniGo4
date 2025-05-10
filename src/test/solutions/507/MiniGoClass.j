@@ -41,9 +41,12 @@ Label1:
 .method public static <clinit>()V
 Label0:
 Label2:
+	iconst_3
+	i2f
+	putstatic MiniGoClass/a <class 'AST.FloatType'>
 Label3:
 Label1:
 	return
-.limit stack 0
+.limit stack 1
 .limit locals 0
 .end method

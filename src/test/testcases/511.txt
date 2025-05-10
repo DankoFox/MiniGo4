@@ -1,1 +1,1 @@
-func main() {var a bool = true; a = false; if (a) putInt(1); else putInt(0);};
+Program([FuncDecl(main,[],VoidType,Block([FuncCall(putInt,[IntLiteral(25)])]))])

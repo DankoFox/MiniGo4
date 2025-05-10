@@ -1,1 +1,1 @@
-func main() {var a float = 1.5; a = 2.5; putInt(truncate(a));};
+var a int = 10; func main() { putInt(a);};

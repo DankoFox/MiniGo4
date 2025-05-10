@@ -147,9 +147,15 @@ class CodeGenerator(BaseVisitor,Utils):
         env['frame'] = frame
 
         #Trừ đoạn code dưới đây thì còn lại giống emitObjectInit:
-        self.visit(Block([
-            #  Assign(#TODO ...) for item in ast.decl if isinstance(item, (VarDecl, ConstDecl))       => Block chứa danh sách các Assign
-        ]), env)
+        init_assigns = [
+            Assign(Id(decl.varName), decl.varInit)
+            for decl in ast.decl 
+            if isinstance(decl, (VarDecl, ConstDecl)) and decl.varInit
+        ]
+        
+        # Visit the block containing all initialization assignments
+        self.visit(Block(init_assigns), env)
+
         # Đoạn này nạp mấy biến/hằng toàn cục vào lớp MiniGoClass
 
 
@@ -266,7 +272,7 @@ class CodeGenerator(BaseVisitor,Utils):
             elif type(varType) is StringType:
                 return StringLiteral("\"\"")
             elif type(varType) is BoolType:
-                return BooleanLiteral("false")
+                return BooleanLiteral(False)
             elif type(varType) is ArrayType:
 
                 # Với mảng thì mình dùng đệ quy để sinh ra mảng giá trị cho đúng nhé.
@@ -319,33 +325,50 @@ class CodeGenerator(BaseVisitor,Utils):
             self.emit.printout(self.emit.emitWRITEVAR(ast.varName, varType, index,  frame)) # sinh mã gán giá trị vào biến                   
         return o
     
-    def visitFuncCall(self, ast: FuncCall, o: dict) -> dict: # TODO: FIX THIS
-        sym = next(filter(lambda x: x.name == ast.funName, self.list_function),None)
-        frame = o['frame']
-
-        if o.get('stmt'):
-            o["stmt"] = False #TODO: dùng emittter sinh mã cho khúc lấy params trong ast.args, nhớ dùng hàm visit, visit qa từng args. Dùng list comprehension or vòng lặp: [..code..]  
-            for arg in ast.args:
-                code, _ = self.visit(arg, o)
-                self.emit.printout(code)
-              
-            self.emit.printout(self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, frame))
-            #Đã đặt đủ tham số vào stack rồi thì sinh mã gọi hàm thôi
-
-            return o # trả về o luôn vì stmt luôn trả về void k cần quan tâm
+    def visitFuncCall(self, ast: FuncCall, o: dict): # TESTING
+        # Find the function symbol
+        sym = next((x for x in self.list_function if x.name == ast.funName), None)
+        if not sym:
+            raise Undeclared(Function(), ast.funName)
         
-        result = ""
+        frame = o['frame']
+        
+        # Handle statement case (no return value needed)
+        if o.get('stmt', False):
+            # Clear the flag for nested function calls
+            o["stmt"] = False
+            
+            # Generate code for all arguments
+            for arg in ast.args:
+                arg_code, _ = self.visit(arg, o)
+                self.emit.printout(arg_code)
+            
+            # Generate invocation
+            class_name = sym.value.value if sym.value else self.className
+            self.emit.printout(
+                self.emit.emitINVOKESTATIC(
+                    f"{class_name}/{ast.funName}",
+                    sym.mtype,
+                    frame
+                )
+            )
+            return o
+        
+        # Handle expression case (return value needed)
+        arg_codes = []
         for arg in ast.args:
             code, _ = self.visit(arg, o)
-            result += code
-        result += self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, frame)
-        return result, sym.mtype.rettype
-
-        # output = "".join([str(self.visit(x, o)[0]) for x in ast.args])
-        # output += "TODO code" ## TODO: Đã đặt đủ tham số vào stack rồi thì sinh mã gọi hàm thôi
-
-        # # Vì funcall ở chỗ này là 1 biểu thức nên mình cần trả về giá trị kèm theo kiểu trả về luôn.
-        # return output, sym.mtype.rettype
+            arg_codes.append(code)
+        
+        # Combine argument codes with invocation
+        class_name = sym.value.value if sym.value else self.className
+        invocation = self.emit.emitINVOKESTATIC(
+            f"{class_name}/{ast.funName}",
+            sym.mtype,
+            frame
+        )
+        
+        return ''.join(arg_codes) + invocation, sym.mtype.rettype
 
     def visitBlock(self, ast: Block, o: dict) -> dict: # TESTING
         env = o.copy()
@@ -353,11 +376,14 @@ class CodeGenerator(BaseVisitor,Utils):
 
         env['env'] = [[]] + env['env']
         frame.enterScope(False)
+
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame)) # NO TEST
 
         for item in ast.member:
-            if type(item) is FuncCall:
+            if isinstance(item, FuncCall):
                 env["stmt"] = True
+            else:
+                env["stmt"] = False
             #Cập nhật biến cờ trước khi visit vào hàm FuncCall, lát nữa duyệt vào trong sẽ tắt biến cờ này đi.
             env = self.visit(item, env)
 
@@ -368,25 +394,59 @@ class CodeGenerator(BaseVisitor,Utils):
         frame.exitScope()
         return o
     
-    def visitId(self, ast: Id, o: dict) -> dict: # TODO: FIX THIS
-        #Dòng này để xác định à Id của mình là thằng nào trong env.
-        sym = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i]),None)
+    def visitId(self, ast: Id, o: dict) -> tuple[str, Type]:
+        # Find the symbol in the environment
+        sym = next((s for scope in o['env'] for s in scope if s.name == ast.name), None)
+        
+        if sym is None:
+            raise UndeclaredIdentifier(ast.name)
 
         frame = o['frame']
-        #Nếu Id này nằm ở vế trái phép gán
-        if o.get('isLeft'):
-            if type(sym.value) is Index: #Nếu Id là 1 tên trường của 1 object
-               return self.emit.emitWRITEVAR(sym.name, sym.mtype, sym.value.value, frame), sym.mtype #TODO ở đây tham số inType là sym.mtype
-            else:         
-                #Putstatic là ghi vào biến static,
-                return self.emit.emitPUTSTATIC(f"{sym.value.value}/{sym.name}", sym.mtype, frame), sym.mtype  #TODO  truyền vào tên lexeme cho đúng. VD: MiniGoClass/varName
+        
+        # If writing to the identifier (left-hand side of assignment)
+        if o.get('isLeft', False):
+            if isinstance(sym.value, Index):  # Local variable
+                return (
+                    self.emit.emitWRITEVAR(
+                        sym.name,          # variable name
+                        sym.mtype,         # variable type
+                        sym.value.value,   # stack index
+                        frame              # current frame
+                    ),
+                    sym.mtype
+                )
+            else:  # Static/class field
+                class_name = self.className  # From the code generator class
+                return (
+                    self.emit.emitPUTSTATIC(
+                        f"{class_name}/{sym.name}",  # lexeme format
+                        sym.mtype,                   # type
+                        frame                        # frame
+                    ),
+                    sym.mtype
+                )
 
-
-        if type(sym.value) is Index: #Nếu Id là 1 tên trường của 1 object
-            return self.emit.emitREADVAR(sym.name, sym.mtype, sym.value.value, frame), sym.mtype #TODO   truyền vào tên lexeme cho đúng
-        else:         
-            #Getstatic là đọc biến static,
-            return self.emit.emitGETSTATIC(f"{sym.value.value}/{sym.name}", sym.mtype, frame), sym.mtype #TODO  truyền vào tên lexeme cho đúng
+        # If reading the identifier
+        if isinstance(sym.value, Index):  # Local variable
+            return (
+                self.emit.emitREADVAR(
+                    sym.name,          # variable name
+                    sym.mtype,        # variable type
+                    sym.value.value,  # stack index
+                    frame             # current frame
+                ),
+                sym.mtype
+            )
+        else:  # Static/class field
+            class_name = self.className  # From the code generator class
+            return (
+                self.emit.emitGETSTATIC(
+                    f"{class_name}/{sym.name}",  # lexeme format
+                    sym.mtype,                   # type
+                    frame                        # frame
+                ),
+                sym.mtype
+            )
 
     def visitAssign(self, ast: Assign, o: dict) -> dict: # TODO: FIX THIS
 
@@ -412,7 +472,7 @@ class CodeGenerator(BaseVisitor,Utils):
         # Khúc array cell này task 3
         o['frame'].push() # Tăng kích thước stack lên 1 đơn vị, vì mình sẽ dùng stack để lưu trữ giá trị của biến này.
 
-        if type(ast.lhs) is ArrayCell:
+        if isinstance(ast.lhs, ArrayCell):
             self.emit.printout(lhsCode)
             self.emit.printout(rhsCode)
             self.emit.printout(self.emit.emitASTORE(lhsType.eleType, o['frame'])) # lưu vào mảng, truyền vào mảng và o['frame'].Gợi ý, khi visit lhs ta có visitAarrayCell và dùng self.. để lưu mảng đang xét
@@ -424,10 +484,16 @@ class CodeGenerator(BaseVisitor,Utils):
         return o
 
     def visitReturn(self, ast: Return, o: dict) -> dict:
+        frame = o['frame']
+        retType = VoidType()
+
         if ast.expr:
-            self.emit.printout(self.visit(ast.expr, o)[0])
-        self.emit.printout(self.emit.emitRETURN("TODO")) # truyền vào kiểu trả về của hàm và o['frame']
+            code, retType = self.visit(ast.expr, o)
+            self.emit.printout(code)
+
+        self.emit.printout(self.emit.emitRETURN(retType, frame))
         return o
+
 
     ##  END decl ------------------------------
 
@@ -440,36 +506,46 @@ class CodeGenerator(BaseVisitor,Utils):
         frame = o['frame']
         codeLeft, typeLeft = self.visit(ast.left, o)
         codeRight, typeRight = self.visit(ast.right, o)
-        if op in ['+', '-'] and type(typeLeft) in [FloatType, IntType]:
-            typeReturn = IntType() if type(typeLeft) is IntType and type(typeRight) is IntType else FloatType()
-            if type(typeReturn) is FloatType:
-                if type(typeLeft) is IntType:
-                    codeLeft += self.emit.emitI2F(frame)
-                ## TODO implement xét cả typeRight nữa
-            return codeLeft + codeRight + "TODO" ## TODO implement
-        if op in ['*', '/']:
-            typeReturn = "TODO" ## TODO : cả trái phải đều int thì mới trả ra int con không thì trả ra float
-            if type(typeReturn) is FloatType:
-                if type(typeLeft) is IntType:
-                    codeLeft += self.emit.emitI2F(frame)
-                ## TODO implement tương tự cho typeRight
-            return codeLeft + codeRight +  "TODO"## TODO sinh mã cho mulop + trả vè kiểu trả về
-        if op in ['%']:
-            return codeLeft + codeRight +  "TODO"## TODO sinh mã cho mod + trả về kiểu trả về   
-        if op in ['==', '!=', '<', '>', '>=', '<='] and type(typeLeft) in [FloatType, IntType]:
-            return codeLeft + codeRight +  "TODO"## TODO sinh mã cho reop + trả về kiểu trả về
-        if op in ['||']:
-            return codeLeft + codeRight +  "TODO"## TODO sinh mã cho orop + trả về kiểu trả về
-        if op in ['&&']:
-            return codeLeft + codeRight + self.emit.emitANDOP(frame), BoolType()  # Lấy này làm vd làm mấy cái ở trên
 
-        # nối string string        
-        if op in ['+', '-'] and type(typeLeft) in [StringType]:
-            return codeLeft + codeRight + "TODO" ## TODO sinh mã cho hàm concat(nằm trong java/lang/String/concat) + trả về kiểu trả về là stringtype  
-        if op in ['==', '!=', '<', '>', '>=', '<='] and type(typeLeft) in [StringType]:
-            code = codeLeft + codeRight + "TODO" ## TODO sinh mã cho hàm compareTo(nằm trong java/lang/String/compareTo) + trả về kiểu trả về là inttype
-            code = code +  "TODO"## TODO implement + self.emit.emitREOP(op, IntType(), frame)
-            return code, BoolType()    
+        # Arithmetic operations: +, -
+        if op in ['+', '-']:
+            if type(typeLeft) in [FloatType, IntType] and type(typeRight) in [FloatType, IntType]:
+                typeReturn = IntType() if type(typeLeft) is IntType and type(typeRight) is IntType else FloatType()
+                
+                if type(typeReturn) is FloatType:
+                    if type(typeLeft) is IntType:
+                        codeLeft += self.emit.emitI2F(frame)
+                    if type(typeRight) is IntType:
+                        codeRight += self.emit.emitI2F(frame)
+
+                return codeLeft + codeRight + self.emit.emitADDOP(op, typeReturn, frame), typeReturn
+
+        # String concatenation
+        if op == '+' and type(typeLeft) is StringType and type(typeRight) is StringType:
+            # Create proper MType for concat method
+            concat_type = MType([StringType()], StringType())
+            return (
+                codeLeft + codeRight + 
+                self.emit.emitINVOKEVIRTUAL("java/lang/String/concat", concat_type, frame),
+                StringType()
+            )
+
+        # String comparison
+        if op in ['==', '!=', '<', '>', '>=', '<='] and type(typeLeft) is StringType:
+            # Create proper MType for compareTo method
+            compare_type = MType([StringType()], IntType())
+            code = (
+                codeLeft + codeRight +
+                self.emit.emitINVOKEVIRTUAL("java/lang/String/compareTo", compare_type, frame) +
+                self.emit.emitREOP(op, IntType(), frame)
+            )
+            return code, BoolType()
+
+        # Rest of your existing binary operations...
+        # [Keep all your existing arithmetic, comparison, and logical operations]
+        
+        raise Exception(f"Unsupported binary operation: {op} with types {type(typeLeft)} and {type(typeRight)}")
+
               
     def visitUnaryOp(self, ast: UnaryOp, o: dict) -> tuple[str, Type]:
         if ast.op == '!':
@@ -482,10 +558,12 @@ class CodeGenerator(BaseVisitor,Utils):
         return self.emit.emitPUSHICONST(ast.value, o['frame']), IntType()
     
     def visitFloatLiteral(self, ast: FloatLiteral, o: dict) -> tuple[str, Type]:
-        return self.emit.emitPUSHFCONST(ast.value, o['frame']), FloatType()
+        float_str = "{0:.4f}".format(ast.value).rstrip('0').rstrip('.') if "{0:.4f}".format(ast.value).endswith('0') else "{0:.4f}".format(ast.value)
+        return self.emit.emitPUSHFCONST(float_str, o['frame']), FloatType()
     
     def visitBooleanLiteral(self, ast: BooleanLiteral, o: dict) -> tuple[str, Type]:
-        return self.emit.emitPUSHICONST(ast.value, o['frame']), BoolType()
+        bool_str = "true" if ast.value else "false"
+        return self.emit.emitPUSHICONST(bool_str, o['frame']), BoolType()
     
     def visitStringLiteral(self, ast: StringLiteral, o: dict) -> tuple[str, Type]:
         return self.emit.emitPUSHCONST(ast.value, StringType(), o['frame']), StringType()

@@ -6,13 +6,8 @@
 Label0:
 .var 0 is args [Ljava/lang/String; from Label0 to Label1
 Label2:
-	iconst_1
-	invokestatic io/putIntLn(I)V
-	fconst_1
-	invokestatic io/putFloatLn(<class 'AST.FloatType'>)V
-	ldc "TIEN"
-	invokestatic io/putStringLn(Ljava/lang/String;)V
-	invokestatic io/putLn()V
+	bipush 25
+	invokestatic io/putInt(I)V
 Label3:
 Label1:
 	return

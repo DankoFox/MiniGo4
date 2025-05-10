@@ -59,16 +59,26 @@ class Emitter():
                 return self.emitPUSHICONST(int(in_), frame)
 
     def emitPUSHFCONST(self, in_, frame):
-        #in_: String
-        #frame: Frame
-        
-        f = float(in_)
+        # in_ should be a string representing the float
         frame.push()
-        rst = "{0:.4f}".format(f)
-        if rst == "0.0" or rst == "1.0" or rst == "2.0":
-            return self.jvm.emitFCONST(rst)
-        else:
-            return self.jvm.emitLDC(in_)           
+        
+        # Handle special cases (0.0, 1.0, 2.0) first
+        if in_ == "0.0" or in_ == "0":
+            return self.jvm.emitFCONST("0.0")
+        elif in_ == "1.0" or in_ == "1":
+            return self.jvm.emitFCONST("1.0")
+        elif in_ == "2.0" or in_ == "2":
+            return self.jvm.emitFCONST("2.0")
+        
+        # For other values, ensure proper decimal format
+        try:
+            # Convert to float and back to string to normalize format
+            normalized = "{0:.4f}".format(float(in_))
+            if normalized.endswith(".0000"):
+                normalized = normalized.split(".")[0]  # Remove decimal for whole numbers
+            return self.jvm.emitLDC(normalized)
+        except ValueError:
+            raise IllegalOperandException(in_)       
 
     ''' 
     *    generate code to push a constant onto the operand stack.
@@ -177,7 +187,7 @@ class Emitter():
         
         frame.pop()
 
-        if type(inType) is IntType:
+        if type(inType) in [IntType, BoolType]:
             return self.jvm.emitISTORE(index)
         elif type(inType) is FloatType:
             return self.jvm.emitFSTORE(index)
@@ -573,14 +583,23 @@ class Emitter():
     '''
 
     def emitRETURN(self, in_, frame):
-        #in_: Type
-        #frame: Frame
+        # in_: Type
+        # frame: Frame
 
-        if type(in_) is IntType:
+        if type(in_) in [IntType, BoolType]:
             frame.pop()
             return self.jvm.emitIRETURN()
+        elif type(in_) is FloatType:
+            frame.pop()
+            return self.jvm.emitFRETURN()
+        elif type(in_) is StringType:
+            frame.pop()
+            return self.jvm.emitARETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
+        else:
+            raise IllegalRuntimeException(f"Unsupported return type: {type(in_)}")
+
 
     ''' generate code that represents a label	
     *   @param label the label

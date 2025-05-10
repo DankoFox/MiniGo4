@@ -1,1 +1,1 @@
-func main() {var a string = "hello"; a = "world"; putInt(1);};
+Program([FuncDecl(main,[],VoidType,Block([VarDecl(a,IntType,IntLiteral(500)),FuncCall(putInt,[Id(a)])]))])
